@@ -10,6 +10,60 @@ import pandas as pd
 from mmphate_repro.embeddings.runners import center_columns, embed_mmphate, embed_pca, embed_tsne, TSNEConfig
 from mmphate_repro.metrics.neighborhood import zscore_across_samples, neighborhood_preservation
 from mmphate_repro.utils.paths import cache_dir
+import fnmatch
+import json
+
+def _infer_E_T(z: dict, ET: int) -> tuple[int, int]:
+    """
+    Infer number of epochs E and timesteps per epoch T from npz metadata.
+    Uses mu_a or mu_b length if available; otherwise falls back to (ET, 1).
+    """
+    E = None
+    for k in ("n_epochs", "E", "epochs"):
+        if k in z:
+            try:
+                E = int(z[k])
+                break
+            except Exception:
+                pass
+
+    if E is None:
+        for k in ("mu_a", "mu_b"):
+            if k in z:
+                try:
+                    E = int(len(z[k]))
+                    break
+                except Exception:
+                    pass
+
+    if E is None or E <= 0:
+        return ET, 1
+
+    if ET % E != 0:
+        # fall back if inconsistent metadata
+        return ET, 1
+
+    T = ET // E
+    return E, T
+
+
+def _build_labels(ET: int, H: int, E: int, T: int, units_a: int) -> dict[str, np.ndarray]:
+    """
+    Build 1D label arrays of length N=ET*H for coloring.
+    Assumes flattened axis is epoch-major then timestep (t=0..T-1 within each epoch).
+    """
+    epoch_ET = np.repeat(np.arange(E, dtype=int), T)          # length ET
+    time_ET  = np.tile(np.arange(T, dtype=int), E)            # length ET
+
+    epoch = np.repeat(epoch_ET, H)                            # length N
+    timestep = np.repeat(time_ET, H)                          # length N
+    unit = np.tile(np.arange(H, dtype=int), ET)               # length N
+    group = (unit >= int(units_a)).astype(int)                # 0=A, 1=B
+    return dict(epoch=epoch, timestep=timestep, unit=unit, group=group)
+
+
+def _save_json(path: Path, obj: dict) -> None:
+    path.write_text(json.dumps(obj, indent=2))
 
 
 @dataclass(frozen=True)
@@ -36,6 +90,36 @@ def run_one(npz_path: Path, cfg: SyntheticSuiteConfig) -> pd.DataFrame:
     z = _load_npz(npz_path)
     trace_data = z["data"]  # (ET, H, S)
     ET, H, S = trace_data.shape
+        # ------------------------------------------------------------
+    # Cache label vectors for plotting (epoch/timestep/unit/group)
+    # ------------------------------------------------------------
+    E, T = _infer_E_T(z, ET)
+
+    epoch_per_ET = np.repeat(np.arange(E, dtype=int), T)[:ET]     # (ET,)
+    step_per_ET  = np.tile(np.arange(T, dtype=int), E)[:ET]       # (ET,)
+
+    epoch_label   = np.repeat(epoch_per_ET, H)                    # (ET*H,)
+    timestep_label = np.repeat(step_per_ET, H)                    # (ET*H,)
+    unit_label    = np.tile(np.arange(H, dtype=int), ET)          # (ET*H,)
+
+    units_a = int(z["units_a"]) if "units_a" in z else H // 2
+    units_b = int(z["units_b"]) if "units_b" in z else (H - units_a)
+    group_per_unit = np.zeros(H, dtype=int)
+    group_per_unit[units_a:] = 1                                  # 0=A, 1=B
+    group_label = np.tile(group_per_unit, ET)                     # (ET*H,)
+
+    meta = {
+        "ET": int(ET), "H": int(H), "S": int(S),
+        "E": int(E), "T": int(T),
+        "units_a": int(units_a), "units_b": int(units_b),
+    }
+
+    (out_dir / "labels").mkdir(parents=True, exist_ok=True)
+    np.save(out_dir / "labels" / "epoch_label.npy", epoch_label)
+    np.save(out_dir / "labels" / "timestep_label.npy", timestep_label)
+    np.save(out_dir / "labels" / "unit_label.npy", unit_label)
+    np.save(out_dir / "labels" / "group_label.npy", group_label)
+    (out_dir / "labels" / "meta.json").write_text(json.dumps(meta, indent=2))
 
     # Flatten for PCA/t-SNE
     X = trace_data.reshape(ET * H, S)
@@ -78,10 +162,32 @@ def run_one(npz_path: Path, cfg: SyntheticSuiteConfig) -> pd.DataFrame:
     return df
 
 
-def run_suite(root_dir: Path, cfg: SyntheticSuiteConfig) -> pd.DataFrame:
+def run_suite(root_dir: Path, cfg: SyntheticSuiteConfig, include: tuple[str, ...] | None = None) -> pd.DataFrame:
+    """
+    Run embeddings/metrics for scenarios under root_dir.
+
+    include:
+      Optional list of scenario tags or glob patterns to include, e.g.
+      ("hopf_bif__pitchfork_bif__no_warp", "hopf_bif__pitchfork_bif__warp", "hopf_big_clean_vs_warped")
+      Patterns like "*pitchfork*" are allowed.
+    """
     npz_files = sorted(root_dir.glob("**/rnn_traces.npz"))
     if not npz_files:
         raise FileNotFoundError(f"No rnn_traces.npz found under {root_dir}")
+
+    if include is not None and len(include) > 0:
+        kept = []
+        for f in npz_files:
+            tag = _scenario_tag(f)
+            if any(fnmatch.fnmatch(tag, pat) for pat in include):
+                kept.append(f)
+        npz_files = kept
+
+        if not npz_files:
+            raise FileNotFoundError(
+                f"No scenarios matched include={include}. "
+                f"Check folder names under {root_dir}."
+            )
 
     all_dfs = []
     for f in npz_files:
