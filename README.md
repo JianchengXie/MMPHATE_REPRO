@@ -1,4 +1,3 @@
-````md
 # MM-PHATE Reproducibility
 
 This repository contains code to reproduce the **main figures** from the paper:
