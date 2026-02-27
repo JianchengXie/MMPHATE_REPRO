@@ -50,18 +50,36 @@ Activate the environment:
 
 Install dependencies and the package:
 
+For cache/figures:
 ```powershell
 pip install -r requirements\base.txt
 pip install -r requirements\dev.txt
 pip install -e .
 ```
 
+For full training:
+```powershell
+pip install -r requirements/full.txt
+pip install -r requirements\dev.txt
+pip install -e .
+```
+
 ### macOS / Linux (bash)
 
+For cache/figures:
 ```bash
 python3.10 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements/base.txt
+pip install -r requirements/dev.txt
+pip install -e .
+```
+
+For full training:
+```bash
+python3.10 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements/full.txt
 pip install -r requirements/dev.txt
 pip install -e .
 ```

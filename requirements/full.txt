@@ -1,0 +1,21 @@
+-r base.txt
+
+# Training framework (pinned exactly as in your environment)
+tensorflow==2.10.1
+keras==2.10.0
+tensorboard==2.10.1
+tensorflow-estimator==2.10.0
+tensorflow-io-gcs-filesystem==0.31.0
+
+# TF stack pins from your lock (important for reproducibility)
+h5py==3.8.0
+protobuf==3.19.6
+absl-py==1.4.0
+gast==0.4.0
+google-pasta==0.2.0
+opt-einsum==3.3.0
+wrapt==1.15.0
+termcolor==2.3.0
+flatbuffers==23.3.3
+libclang==16.0.0
+grpcio==1.54.0

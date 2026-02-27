@@ -1,3 +1,3 @@
-pytest
-tox
-ruff
+pytest==8.2.2
+tox==4.15.0
+ruff==0.5.1

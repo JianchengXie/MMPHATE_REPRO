@@ -7,7 +7,14 @@ src/mmphate_repro.egg-info/SOURCES.txt
 src/mmphate_repro.egg-info/dependency_links.txt
 src/mmphate_repro.egg-info/entry_points.txt
 src/mmphate_repro.egg-info/top_level.txt
+src/mmphate_repro/embeddings/__init__.py
+src/mmphate_repro/embeddings/runners.py
 src/mmphate_repro/figures/hopf_ancher.py
+src/mmphate_repro/io/rnn_traces.py
+src/mmphate_repro/metrics/__init__.py
+src/mmphate_repro/metrics/neighborhood.py
 src/mmphate_repro/pipelines/reproduce.py
+src/mmphate_repro/pipelines/synthetic_suite_embeddings.py
 src/mmphate_repro/utils/paths.py
 tests/test_imports.py
+tests/test_neighborhood.py
