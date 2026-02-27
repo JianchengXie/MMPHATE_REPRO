@@ -1,0 +1,19 @@
+# env
+.venv/
+__pycache__/
+*.pyc
+
+# local data + outputs
+data/
+figures/
+results_cache/
+runs/
+artifacts/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

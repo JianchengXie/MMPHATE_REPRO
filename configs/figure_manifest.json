@@ -1,0 +1,13 @@
+{
+  "figures": [
+    {
+      "id": "fig_hopf_anchor",
+      "mode": ["cache", "full"],
+      "pipeline": "mmphate_repro.figures.hopf_anchor:make_figure",
+      "cache_inputs": [
+        "results_cache/hopf_anchor/embedding_mmphate.npy",
+        "results_cache/hopf_anchor/metrics.json"
+      ]
+    }
+  ]
+}

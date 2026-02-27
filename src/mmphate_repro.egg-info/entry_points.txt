@@ -1,0 +1,2 @@
+[console_scripts]
+mmphate-repro = mmphate_repro.cli:main

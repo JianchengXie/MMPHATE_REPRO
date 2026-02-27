@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mmphate-repro"
+version = "0.1.0"
+description = "Reproducibility code for Multiway Multislice PHATE (MM-PHATE)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+  {name = "Jiancheng Xie", email = "xiejc@bu.edu"}
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+mmphate-repro = "mmphate_repro.cli:main"
