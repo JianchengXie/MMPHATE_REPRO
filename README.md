@@ -12,6 +12,7 @@ The code supports two reproducibility modes:
 ---
 
 ## Method at a glance
+![MM-PHATE animation](har_mmphate_3d_epoch_animation_colored_by_timestep.gif)
 
 MM-PHATE extends **M-PHATE** (Gigante et al., 2019) to handle the temporal nature of RNNs by constructing a **multiway multislice graph** across:
 

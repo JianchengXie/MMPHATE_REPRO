@@ -4,10 +4,9 @@ from pathlib import Path
 from mmphate_repro.pipelines.reproduce import reproduce_main
 from mmphate_repro.pipelines.synthetic_suite_embeddings import run_suite, SyntheticSuiteConfig
 from mmphate_repro.figures.synthetic_grid_2d import make_grids
-from mmphate_repro.pipelines.area2bump_full import run_area2bump_full, Area2BumpRunConfig
 from mmphate_repro.figures.area2bump_grid_2d import make_area2bump_grid
 from mmphate_repro.figures.area2bump_grid_3d import make_area2bump_grid_3d
-from mmphate_repro.utils.paths import data_dir
+
 
 def main():
     parser = argparse.ArgumentParser(prog="mmphate-repro")
@@ -97,6 +96,9 @@ def main():
         return
     
     if args.cmd == "area2bump-run":
+        from mmphate_repro.pipelines.area2bump_full import run_area2bump_full, Area2BumpRunConfig
+        from mmphate_repro.utils.paths import data_dir
+        
         root = Path(args.data_root) if args.data_root else (data_dir() / "area2bump")
         cfg = Area2BumpRunConfig(seed=args.seed, epochs=args.epochs, lr=args.lr, n_units=args.units, n_jobs_mphate=args.n_jobs)
         run_area2bump_full(root, args.run_id, cfg)
