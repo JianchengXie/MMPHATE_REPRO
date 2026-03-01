@@ -9,15 +9,6 @@ import numpy as np
 # TF env flags should be set before importing tensorflow in some setups.
 # Here we assume tf is already imported elsewhere; users can still set OS env vars if needed.
 
-import tensorflow as tf
-from tensorflow.keras.utils import to_categorical
-
-import m_phate
-import m_phate.train
-
-from mmphate_repro.io.area2bump import load_area2bump_from_dir
-from mmphate_repro.models.area2bump_lstm import build_lstm_classifier, LSTMConfig
-from mmphate_repro.pipelines.trace_standardize import standardize_trace_tensor
 from mmphate_repro.embeddings.runners import center_columns, embed_pca, embed_tsne, embed_mmphate, TSNEConfig
 from mmphate_repro.utils.paths import cache_dir
 
@@ -44,7 +35,7 @@ class Area2BumpRunConfig:
     tsne: TSNEConfig = TSNEConfig(perplexity=50, n_iter=2000, random_state=24)
 
 
-def _set_seeds(seed: int):
+def _set_seeds(seed: int, tf):
     # determinism best-effort (GPU ops may still vary)
     os.environ["PYTHONHASHSEED"] = str(seed)
     os.environ["TF_DETERMINISTIC_OPS"] = "1"
@@ -85,7 +76,15 @@ def run_area2bump_full(data_dir: Path, run_id: str, cfg: Area2BumpRunConfig) -> 
     """
     Writes caches to results_cache/area2bump/<run_id>/ and returns that path.
     """
-    _set_seeds(cfg.seed)
+    import tensorflow as tf
+    from tensorflow.keras.utils import to_categorical
+    import m_phate
+    import m_phate.train
+    from mmphate_repro.io.area2bump import load_area2bump_from_dir
+    from mmphate_repro.models.area2bump_lstm import build_lstm_classifier, LSTMConfig
+    from mmphate_repro.pipelines.trace_standardize import standardize_trace_tensor
+
+    _set_seeds(cfg.seed, tf)
 
     out_dir = cache_dir() / "area2bump" / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -186,5 +185,91 @@ def run_area2bump_full(data_dir: Path, run_id: str, cfg: Area2BumpRunConfig) -> 
     mm = embed_mmphate(trace_et_h_s, n_components=3, n_jobs=cfg.n_jobs_mphate, cache_path=out_dir / "embedding_mmphate_3D.npy")
     pca = embed_pca(Xc, n_components=3, random_state=24, cache_path=out_dir / "embedding_pca_3D.npy")
     tsne = embed_tsne(Xc, cfg=cfg.tsne, cache_path=out_dir / "embedding_tsne_3D.npy")
+
+    return out_dir
+
+
+# ---------------------------------------------------------------
+# Import from legacy run directory
+# ---------------------------------------------------------------
+
+def import_area2bump_run(legacy_dir: Path, run_id: str, n_jobs_mphate: int = 1) -> Path:
+    """
+    Convert an existing legacy Area2Bump run directory into the project cache format.
+
+    Expected files in legacy_dir:
+      "1 layer_20 units_LSTM__accuracy 1.000_digit activity.npy"  (E_s, n_class, T_s, H)
+      "1 layer_20 units_LSTM__accuracy 1.000_m-phate 3D.npy"      (ET*H, 3)
+      "1 layer_20 units_LSTM__accuracy 1.000_m-phate_epoch_label.npy"
+      "1 layer_20 units_LSTM__accuracy 1.000_m-phate_intrinsic_step.npy"
+      "1 layer_20 units_LSTM__accuracy 1.000_m-phate_hidden_unit.npy"
+      "1 layer_20 units_LSTM__accuracy 1.000_m-phate_most_active_output.npy"
+      "epoch_samples.npy"
+      "accuracy.npy", "loss.npy", "val_loss.npy", "test_accuracy.npy"
+
+    PCA and t-SNE are recomputed from the digit-activity trace.
+    """
+    prefix = "1 layer_20 units_LSTM__accuracy 1.000_"
+
+    out_dir = cache_dir() / "area2bump" / run_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ---- trace: (E_s, n_class, T_s, H) -> (E_s*T_s, H, n_class) ----
+    digit_activity = np.load(legacy_dir / f"{prefix}digit activity.npy")
+    E_s, n_class, T_s, H = digit_activity.shape
+    # Transpose (E_s, n_class, T_s, H) -> (E_s, T_s, H, n_class), reshape to (ET, H, S)
+    trace_et_h_s = digit_activity.transpose(0, 2, 3, 1).reshape(E_s * T_s, H, n_class)
+    np.save(out_dir / "trace_et_h_s.npy", trace_et_h_s)
+
+    # ---- copy epoch_samples ----
+    epoch_samples = np.load(legacy_dir / "epoch_samples.npy")
+    np.save(out_dir / "epoch_samples.npy", epoch_samples)
+
+    # ---- training curves ----
+    for src_name, dst_name in [
+        ("accuracy.npy",      "train_accuracy.npy"),
+        ("loss.npy",          "train_loss.npy"),
+        ("val_loss.npy",      "val_loss.npy"),
+        ("test_accuracy.npy", "test_accuracy.npy"),
+    ]:
+        p = legacy_dir / src_name
+        if p.exists():
+            np.save(out_dir / dst_name, np.load(p))
+
+    # ---- labels ----
+    labdir = out_dir / "labels"
+    labdir.mkdir(parents=True, exist_ok=True)
+
+    np.save(labdir / "epoch_label.npy",
+            np.load(legacy_dir / f"{prefix}m-phate_epoch_label.npy"))
+    np.save(labdir / "timestep_label.npy",
+            np.load(legacy_dir / f"{prefix}m-phate_intrinsic_step.npy"))
+    np.save(labdir / "unit_label.npy",
+            np.load(legacy_dir / f"{prefix}m-phate_hidden_unit.npy"))
+    np.save(labdir / "class_label.npy",
+            np.load(legacy_dir / f"{prefix}m-phate_most_active_output.npy").astype(int))
+
+    # ---- copy MM-PHATE embedding (already computed) ----
+    np.save(out_dir / "embedding_mmphate_3D.npy",
+            np.load(legacy_dir / f"{prefix}m-phate 3D.npy"))
+
+    # ---- compute PCA and t-SNE from trace ----
+    ET = E_s * T_s
+    S = n_class
+    X = trace_et_h_s.reshape(ET * H, S)
+    Xc = center_columns(X)
+
+    embed_pca(Xc, n_components=3, random_state=24,
+              cache_path=out_dir / "embedding_pca_3D.npy")
+    embed_tsne(Xc, cfg=TSNEConfig(perplexity=50, n_iter=2000, random_state=24),
+               cache_path=out_dir / "embedding_tsne_3D.npy")
+
+    meta = dict(
+        run_id=run_id, source="legacy_import",
+        legacy_dir=str(legacy_dir),
+        E_s=int(E_s), T_s=int(T_s), H=int(H), S=int(S),
+        ET=int(ET), epoch_samples=epoch_samples.tolist(),
+    )
+    (out_dir / "meta.json").write_text(json.dumps(meta, indent=2))
 
     return out_dir

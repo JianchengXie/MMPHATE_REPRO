@@ -1,13 +1,21 @@
 {
-  "figures": [
-    {
-      "id": "fig_hopf_anchor",
-      "mode": ["cache", "full"],
-      "pipeline": "mmphate_repro.figures.hopf_anchor:make_figure",
-      "cache_inputs": [
-        "results_cache/hopf_anchor/embedding_mmphate.npy",
-        "results_cache/hopf_anchor/metrics.json"
-      ]
-    }
-  ]
+  "synthetic": {
+    "scenarios": [
+      "hopf_bif__pitchfork_bif__no_warp__seed24",
+      "hopf_bif__pitchfork_bif__warp__seed24",
+      "hopf_bif__clean_vs_warped__seed24"
+    ]
+  },
+  "area2bump": {
+    "run_id": "paper_run",
+    "epochs": 200,
+    "n_units": 20,
+    "lr": 0.0001
+  },
+  "har": {
+    "run_id": "paper_run",
+    "epochs": 1000,
+    "n_units": 30,
+    "lr": 0.00002
+  }
 }

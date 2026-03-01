@@ -90,7 +90,12 @@ def run_one(npz_path: Path, cfg: SyntheticSuiteConfig) -> pd.DataFrame:
     z = _load_npz(npz_path)
     trace_data = z["data"]  # (ET, H, S)
     ET, H, S = trace_data.shape
-        # ------------------------------------------------------------
+
+    # IMPORTANT: define cache directory immediately
+    out_dir = _scenario_cache_dir(npz_path)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ------------------------------------------------------------
     # Cache label vectors for plotting (epoch/timestep/unit/group)
     # ------------------------------------------------------------
     E, T = _infer_E_T(z, ET)
@@ -98,9 +103,9 @@ def run_one(npz_path: Path, cfg: SyntheticSuiteConfig) -> pd.DataFrame:
     epoch_per_ET = np.repeat(np.arange(E, dtype=int), T)[:ET]     # (ET,)
     step_per_ET  = np.tile(np.arange(T, dtype=int), E)[:ET]       # (ET,)
 
-    epoch_label   = np.repeat(epoch_per_ET, H)                    # (ET*H,)
+    epoch_label    = np.repeat(epoch_per_ET, H)                   # (ET*H,)
     timestep_label = np.repeat(step_per_ET, H)                    # (ET*H,)
-    unit_label    = np.tile(np.arange(H, dtype=int), ET)          # (ET*H,)
+    unit_label     = np.tile(np.arange(H, dtype=int), ET)         # (ET*H,)
 
     units_a = int(z["units_a"]) if "units_a" in z else H // 2
     units_b = int(z["units_b"]) if "units_b" in z else (H - units_a)
@@ -112,6 +117,7 @@ def run_one(npz_path: Path, cfg: SyntheticSuiteConfig) -> pd.DataFrame:
         "ET": int(ET), "H": int(H), "S": int(S),
         "E": int(E), "T": int(T),
         "units_a": int(units_a), "units_b": int(units_b),
+        "npz_path": str(npz_path),
     }
 
     (out_dir / "labels").mkdir(parents=True, exist_ok=True)
@@ -121,24 +127,25 @@ def run_one(npz_path: Path, cfg: SyntheticSuiteConfig) -> pd.DataFrame:
     np.save(out_dir / "labels" / "group_label.npy", group_label)
     (out_dir / "labels" / "meta.json").write_text(json.dumps(meta, indent=2))
 
-    # Flatten for PCA/t-SNE
+    # flat matrix for PCA / t-SNE
     X = trace_data.reshape(ET * H, S)
     Xc = center_columns(X)
 
-    out_dir = _scenario_cache_dir(npz_path)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Embeddings (cached)
+    # embeddings (cached)
     mm = embed_mmphate(
-        trace_data,
-        n_components=3,
-        n_jobs=cfg.n_jobs_mphate,
+        trace_data, n_components=3, n_jobs=cfg.n_jobs_mphate,
         cache_path=out_dir / "embedding_mmphate_3D.npy",
     )
-    pca = embed_pca(Xc, n_components=3, random_state=24, cache_path=out_dir / "embedding_pca_3D.npy")
-    tsne = embed_tsne(Xc, cfg=cfg.tsne, cache_path=out_dir / "embedding_tsne_3D.npy")
+    pca = embed_pca(
+        Xc, n_components=3, random_state=24,
+        cache_path=out_dir / "embedding_pca_3D.npy",
+    )
+    tsne = embed_tsne(
+        Xc, cfg=cfg.tsne,
+        cache_path=out_dir / "embedding_tsne_3D.npy",
+    )
 
-    # Neighborhood preservation on z-scored traces
+    # neighborhood preservation
     Tz = zscore_across_samples(trace_data.copy())
     rows = []
     for name, emb in [("MM-PHATE", mm), ("PCA", pca), ("t-SNE", tsne)]:
@@ -149,10 +156,9 @@ def run_one(npz_path: Path, cfg: SyntheticSuiteConfig) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     df.to_csv(out_dir / "neighborhood_preservation.csv", index=False)
 
-    # Scenario info (light provenance)
+    # scenario info (light provenance)
     info_keys = ["system_a", "system_b", "units_a", "units_b", "warp_state", "warp_time"]
     info = {k: str(z[k]) for k in info_keys if k in z}
-    info["npz_path"] = str(npz_path)
     if "mu_a" in z:
         info["mu_a_range"] = f"{float(z['mu_a'][0]):.2f} -> {float(z['mu_a'][-1]):.2f}"
     if "mu_b" in z:

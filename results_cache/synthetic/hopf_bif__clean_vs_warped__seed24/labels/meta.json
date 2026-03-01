@@ -1,0 +1,10 @@
+{
+  "ET": 8080,
+  "H": 6,
+  "S": 10,
+  "E": 101,
+  "T": 80,
+  "units_a": 3,
+  "units_b": 3,
+  "npz_path": "D:\\Work\\m-phate\\bifurcation_warp_suite\\hopf_bif__clean_vs_warped__seed24\\rnn_traces.npz"
+}

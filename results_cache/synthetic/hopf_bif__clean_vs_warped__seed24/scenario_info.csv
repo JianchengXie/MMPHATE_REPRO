@@ -1,0 +1,7 @@
+,0
+system_a,hopf
+system_b,hopf
+units_a,3
+units_b,3
+mu_a_range,-1.00 -> 2.00
+mu_b_range,-1.00 -> 2.00

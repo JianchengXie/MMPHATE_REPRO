@@ -31,8 +31,7 @@ def _load_labels(scen_dir: Path) -> dict[str, np.ndarray]:
     return labels
 
 
-def _scatter(ax, xy: np.ndarray, c: np.ndarray, kind: str, title: str):
-    ax.set_title(title, fontsize=10)
+def _scatter(ax, xy: np.ndarray, c: np.ndarray, kind: str):
     ax.set_xticks([])
     ax.set_yticks([])
 
@@ -41,7 +40,6 @@ def _scatter(ax, xy: np.ndarray, c: np.ndarray, kind: str, title: str):
         return sc
 
     if kind == "group":
-        # 0=A, 1=B
         mask0 = (c == 0)
         mask1 = (c == 1)
         ax.scatter(xy[mask0, 0], xy[mask0, 1], s=2, alpha=0.6, label="A")
@@ -50,7 +48,6 @@ def _scatter(ax, xy: np.ndarray, c: np.ndarray, kind: str, title: str):
         return None
 
     # categorical (unit id)
-    # Works well because synthetic H is small (e.g., 6).
     ax.scatter(xy[:, 0], xy[:, 1], c=c, s=2, alpha=0.6)
     return None
 
@@ -65,51 +62,67 @@ def make_grid_for_scenario(scenario: str) -> Path:
         raise FileNotFoundError(f"Missing cache directory: {scen_dir}")
 
     labels = _load_labels(scen_dir)
-    epoch = labels["epoch_label.npy"]
-    step = labels["timestep_label.npy"]
-    unit = labels["unit_label.npy"]
-    group = labels["group_label.npy"]
-
     row_colors = {
-        "epoch_label.npy": epoch,
-        "timestep_label.npy": step,
-        "unit_label.npy": unit,
-        "group_label.npy": group,
+        "epoch_label.npy":    labels["epoch_label.npy"],
+        "timestep_label.npy": labels["timestep_label.npy"],
+        "unit_label.npy":     labels["unit_label.npy"],
+        "group_label.npy":    labels["group_label.npy"],
     }
 
-    fig, axes = plt.subplots(nrows=4, ncols=3, figsize=(12, 12), constrained_layout=True)
-    fig.suptitle(f"Synthetic scenario: {scenario} (2D)", fontsize=12)
+    # Load all embeddings up front
+    embeddings = {}
+    for mname, emb_file in _METHODS:
+        embeddings[emb_file] = np.load(scen_dir / emb_file)[:, :2]
 
-    # Column headers
-    for col, (mname, _) in enumerate(_METHODS):
-        axes[0, col].set_title(mname, fontsize=11)
+    fig, axes = plt.subplots(nrows=4, ncols=3, figsize=(14, 12))
+    fig.suptitle(f"Synthetic scenario: {scenario} (2D)", fontsize=13)
 
-    # Plot rows
-    for col, (mname, emb_file) in enumerate(_METHODS):
-        emb = np.load(scen_dir / emb_file)
-        xy = emb[:, :2]  # first two coords
+    # Track scatter mappables for colorbars on continuous rows
+    continuous_mappables: dict[int, object] = {}
 
-        for row, (row_name, lab_file, kind) in enumerate(_ROWS):
-            c = row_colors[lab_file]
-            title = row_name if col == 0 else ""
-            sc = _scatter(axes[row, col], xy, c, kind, title)
+    for row, (row_name, lab_file, kind) in enumerate(_ROWS):
+        c = row_colors[lab_file]
+        # Row label on the left-most column
+        axes[row, 0].set_ylabel(row_name, fontsize=11)
 
-            # only add colorbars for continuous rows, and only once per row (last column)
-            if kind == "continuous" and col == 2 and sc is not None:
-                fig.colorbar(sc, ax=axes[row, :], fraction=0.015, pad=0.01)
+        for col, (mname, emb_file) in enumerate(_METHODS):
+            ax = axes[row, col]
+            xy = embeddings[emb_file]
+
+            # Column header on the top row only
+            if row == 0:
+                ax.set_title(mname, fontsize=11)
+
+            sc = _scatter(ax, xy, c, kind)
+
+            if kind == "continuous" and sc is not None:
+                continuous_mappables[row] = sc
+
+    # Layout first, then add colorbars so they don't collapse axes
+    fig.tight_layout(rect=[0, 0, 0.92, 0.96])
+
+    for row, sc in continuous_mappables.items():
+        # Compute vertical span from the axes in this row
+        bbox_top = axes[row, 0].get_position()
+        bbox_bot = axes[row, 0].get_position()
+        y0 = bbox_bot.y0
+        y1 = bbox_top.y1
+        cbar_ax = fig.add_axes([0.93, y0, 0.015, y1 - y0])
+        fig.colorbar(sc, cax=cbar_ax)
 
     out_dir = figures_dir() / "synthetic"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{scenario}_grid_2d.pdf"
-    fig.savefig(out_path)
-    plt.close(fig)
 
-    # also write PNG
+    # Save PDF
+    # out_path = out_dir / f"{scenario}_grid_2d.pdf"
+    # fig.savefig(out_path, dpi=150)
+
+    # Save PNG
     png_path = out_dir / f"{scenario}_grid_2d.png"
-    # re-open to save png at higher dpi (simple approach: regenerate quickly)
-    # (keep it minimal: just save a png by reloading)
-    # If you prefer, we can skip png and keep only pdf.
-    return out_path
+    fig.savefig(png_path, dpi=200)
+
+    plt.close(fig)
+    return png_path
 
 
 def make_grids(scenarios: Iterable[str]) -> list[Path]:
