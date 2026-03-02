@@ -141,19 +141,32 @@ Edit it to change hyperparameters or scenario selection without touching code.
 
 ## Apply MM-PHATE to your own data
 
-You can run MM-PHATE on any LSTM or RNN without modifying the library.
+You can run MM-PHATE on any RNN without modifying the library.
 
 ### Step 1 — Record hidden-state traces during training
+
+`m_phate.train.TraceHistory` is a **Keras callback** (`tf.keras.callbacks.Callback`).
+It calls `trace_model(x_trace)` at the end of every epoch and appends the result.
 
 ```python
 import m_phate.train
 
-# x_trace: fixed input sequences recorded at every epoch, shape (S, T, F)
+# x_trace: a small fixed subset of input sequences held constant for all epochs.
+# Shape (S, T, F):  S = number of trace samples (e.g. 5 per class × 8 classes = 40),
+#                   T = sequence length (timesteps),
+#                   F = input features per timestep.
+# Choose a representative subset of your training data once before training.
+x_trace = X_train[trace_indices]      # shape (S, T, F)
+
+# trace_model outputs only hidden states, not the classification head.
 trace_cb = m_phate.train.TraceHistory(x_trace, trace_model)
 model.fit(X_train, y_train, callbacks=[trace_cb])
-# trace_cb.trace: list of length E, each entry shape (H, T, S)
-#   H = hidden units, T = timesteps (intrinsic steps), S = trace samples
+# trace_cb.trace: list of length E, each entry shape (S, T, H)
+#   S = trace samples, T = timesteps (intrinsic steps), H = hidden units
 ```
+
+> **Non-Keras frameworks**: call `trace_model(x_trace)` manually at the end of each
+> epoch and collect results into a list — then proceed from Step 2 the same way.
 
 ### Step 2 — Reshape into (ET, H, S) format
 
@@ -161,7 +174,7 @@ model.fit(X_train, y_train, callbacks=[trace_cb])
 import numpy as np
 from mmphate_repro.pipelines.trace_standardize import standardize_trace_tensor
 
-raw = np.array(trace_cb.trace)                                                   # (E, H, T, S)
+raw = np.array(trace_cb.trace)                                                   # (E, S, T, H)
 std = standardize_trace_tensor(raw, n_samples=S, n_timesteps=T, n_units=H)      # (E, T, H, S)
 
 # Optionally subsample epochs / timesteps to reduce memory
